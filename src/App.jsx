@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { ChevronLeft, ChevronRight, FilePlus2, FolderOpen, Save, CircleDot } from "lucide-react";
 
@@ -26,7 +26,7 @@ export default function CalendarMemo() {
   const fileInputRef = useRef(null);
 
   // sync draft when selection changes
-  useMemo(() => {
+  useEffect(() => {
     setDraft(notes[selectedKey] || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
