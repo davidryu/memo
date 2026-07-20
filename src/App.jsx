@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
-import { ChevronLeft, ChevronRight, FilePlus2, FolderOpen, Save, CircleDot } from "lucide-react";
+import { ChevronLeft, ChevronRight, FilePlus2, FolderOpen, Save, CircleDot, NotebookPen, BookHeart } from "lucide-react";
 import Splash from "./Splash.jsx";
 
 const pad = (n) => String(n).padStart(2, "0");
@@ -16,22 +16,57 @@ const MONTH_NAMES = [
   "July","August","September","October","November","December",
 ];
 
+// 탭(모드)별 테마. 일기장은 밝은 야광연두색 + 글로우.
+const THEME = {
+  memo: {
+    key: "memo",
+    label: "메모장",
+    unit: "메모",
+    accent: "#F0AD5D",
+    soft: "rgba(224,164,88,0.18)",
+    glow: "none",
+    icon: NotebookPen,
+    placeholder: "이 날짜의 메모를 입력하세요...",
+    file: "memo",
+    sheet: "Memo",
+  },
+  diary: {
+    key: "diary",
+    label: "일기장",
+    unit: "일기",
+    accent: "#B6FF3C",              // 밝은 야광연두색
+    soft: "rgba(182,255,60,0.16)",
+    glow: "0 0 16px rgba(182,255,60,0.55)",
+    icon: BookHeart,
+    placeholder: "오늘 하루의 일기를 적어보세요...",
+    file: "diary",
+    sheet: "Diary",
+  },
+};
+
 export default function CalendarMemo() {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth()); // 0-indexed
   const [selectedKey, setSelectedKey] = useState(todayKey());
-  const [notes, setNotes] = useState({}); // { "2026-07-20": "content" }
+  const [mode, setMode] = useState("memo"); // "memo" | "diary"
+  const [notes, setNotes] = useState({});     // 메모장 저장소
+  const [diaries, setDiaries] = useState({}); // 일기장 저장소
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState("");
   const [showSplash, setShowSplash] = useState(true);
   const fileInputRef = useRef(null);
 
-  // sync draft when selection changes
+  const t = THEME[mode];
+  const store = mode === "memo" ? notes : diaries;
+  const setStore = mode === "memo" ? setNotes : setDiaries;
+
+  // 선택 날짜 또는 탭이 바뀌면 해당 저장소의 내용으로 draft 동기화
   useEffect(() => {
-    setDraft(notes[selectedKey] || "");
+    const s = mode === "memo" ? notes : diaries;
+    setDraft(s[selectedKey] || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey]);
+  }, [selectedKey, mode]);
 
   const flash = (msg) => {
     setStatus(msg);
@@ -39,7 +74,7 @@ export default function CalendarMemo() {
   };
 
   const commitDraft = (key, value) => {
-    setNotes((prev) => {
+    setStore((prev) => {
       const next = { ...prev };
       if (value && value.trim().length > 0) {
         next[key] = value;
@@ -48,6 +83,12 @@ export default function CalendarMemo() {
       }
       return next;
     });
+  };
+
+  const handleSwitchMode = (nextMode) => {
+    if (nextMode === mode) return;
+    commitDraft(selectedKey, draft); // 현재 탭 내용 임시 저장
+    setMode(nextMode);
   };
 
   const handleSelectDay = (y, m, d) => {
@@ -77,31 +118,31 @@ export default function CalendarMemo() {
   const handleNew = () => {
     commitDraft(selectedKey, draft);
     setDraft("");
-    setNotes((prev) => {
+    setStore((prev) => {
       const next = { ...prev };
       delete next[selectedKey];
       return next;
     });
-    flash("새 메모를 시작합니다");
+    flash(`새 ${t.unit}를 시작합니다`);
   };
 
   const handleSave = () => {
     commitDraft(selectedKey, draft);
-    const rows = Object.entries({ ...notes, [selectedKey]: draft })
+    const rows = Object.entries({ ...store, [selectedKey]: draft })
       .filter(([, v]) => v && v.trim().length > 0)
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([date, content]) => ({ Date: date, Content: content }));
 
     if (rows.length === 0) {
-      flash("저장할 메모가 없습니다");
+      flash(`저장할 ${t.unit}가 없습니다`);
       return;
     }
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = [{ wch: 12 }, { wch: 80 }];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Memo");
-    XLSX.writeFile(wb, `memo_${todayKey()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, t.sheet);
+    XLSX.writeFile(wb, `${t.file}_${todayKey()}.xlsx`);
     flash("엑셀 파일로 저장했습니다");
   };
 
@@ -134,9 +175,9 @@ export default function CalendarMemo() {
             loaded[key] = String(contentVal);
           }
         });
-        setNotes(loaded);
+        setStore(loaded);
         setDraft(loaded[selectedKey] || "");
-        flash(`${Object.keys(loaded).length}개의 메모를 불러왔습니다`);
+        flash(`${Object.keys(loaded).length}개의 ${t.unit}를 불러왔습니다`);
       } catch (err) {
         flash("파일을 읽을 수 없습니다");
       }
@@ -153,8 +194,8 @@ export default function CalendarMemo() {
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
   const selectedDate = new Date(selectedKey + "T00:00:00");
-  const hasNoteCount = Object.keys(notes).filter(
-    (k) => notes[k] && notes[k].trim().length > 0
+  const hasNoteCount = Object.keys(store).filter(
+    (k) => store[k] && store[k].trim().length > 0
   ).length;
 
   return (
@@ -169,8 +210,8 @@ export default function CalendarMemo() {
         padding: "28px",
         boxSizing: "border-box",
         display: "flex",
-        gap: "24px",
-        flexWrap: "wrap",
+        flexDirection: "column",
+        gap: "20px",
       }}
     >
       <input
@@ -181,6 +222,28 @@ export default function CalendarMemo() {
         style={{ display: "none" }}
       />
 
+      {/* Tabs: 달력 위에 메모장 / 일기장 */}
+      <div style={{ display: "flex", gap: "8px" }}>
+        <TabButton
+          theme={THEME.memo}
+          active={mode === "memo"}
+          onClick={() => handleSwitchMode("memo")}
+        />
+        <TabButton
+          theme={THEME.diary}
+          active={mode === "diary"}
+          onClick={() => handleSwitchMode("diary")}
+        />
+      </div>
+
+      {/* Content row: Calendar + Editor */}
+      <div
+        style={{
+          display: "flex",
+          gap: "24px",
+          flexWrap: "wrap",
+        }}
+      >
       {/* Left: Calendar panel */}
       <div
         style={{
@@ -205,13 +268,13 @@ export default function CalendarMemo() {
             style={iconBtnStyle}
             aria-label="이전 달"
           >
-            <ChevronLeft size={18} color="#E0A458" />
+            <ChevronLeft size={18} color={t.accent} />
           </button>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: "11px", letterSpacing: "0.15em", color: "#7C93B3" }}>
               {viewYear}
             </div>
-            <div style={{ fontSize: "20px", fontWeight: 700, color: "#F0AD5D" }}>
+            <div style={{ fontSize: "20px", fontWeight: 700, color: t.accent }}>
               {MONTH_NAMES[viewMonth]}
             </div>
           </div>
@@ -220,7 +283,7 @@ export default function CalendarMemo() {
             style={iconBtnStyle}
             aria-label="다음 달"
           >
-            <ChevronRight size={18} color="#E0A458" />
+            <ChevronRight size={18} color={t.accent} />
           </button>
         </div>
 
@@ -238,7 +301,7 @@ export default function CalendarMemo() {
               style={{
                 textAlign: "center",
                 fontSize: "11px",
-                color: i === 0 ? "#D97757" : i === 6 ? "#7C93B3" : "#7C93B3",
+                color: i === 0 ? "#D97757" : "#7C93B3",
                 paddingBottom: "6px",
               }}
             >
@@ -259,7 +322,7 @@ export default function CalendarMemo() {
             const key = toKey(viewYear, viewMonth, d);
             const isSelected = key === selectedKey;
             const isToday = key === todayKey();
-            const hasNote = !!(notes[key] && notes[key].trim());
+            const hasNote = !!(store[key] && store[key].trim());
             const dow = (firstDay + d - 1) % 7;
             return (
               <button
@@ -268,12 +331,13 @@ export default function CalendarMemo() {
                 style={{
                   position: "relative",
                   aspectRatio: "1 / 1",
-                  border: isSelected ? "1px solid #F0AD5D" : "1px solid transparent",
+                  border: isSelected ? `1px solid ${t.accent}` : "1px solid transparent",
                   background: isSelected
-                    ? "rgba(224,164,88,0.18)"
+                    ? t.soft
                     : isToday
                     ? "rgba(124,147,179,0.15)"
                     : "transparent",
+                  boxShadow: isSelected ? t.glow : "none",
                   borderRadius: "5px",
                   color: dow === 0 ? "#D97757" : "#E8E6DF",
                   fontFamily: "inherit",
@@ -293,7 +357,7 @@ export default function CalendarMemo() {
                       width: "4px",
                       height: "4px",
                       borderRadius: "50%",
-                      background: "#F0AD5D",
+                      background: t.accent,
                     }}
                   />
                 )}
@@ -314,8 +378,8 @@ export default function CalendarMemo() {
             gap: "6px",
           }}
         >
-          <CircleDot size={12} color="#F0AD5D" />
-          기록된 메모 {hasNoteCount}건
+          <CircleDot size={12} color={t.accent} />
+          기록된 {t.unit} {hasNoteCount}건
         </div>
       </div>
 
@@ -325,11 +389,13 @@ export default function CalendarMemo() {
           flex: "2 1 420px",
           minWidth: "320px",
           background: "#16243A",
-          border: "1px solid #2B3E58",
+          border: `1px solid ${mode === "diary" ? t.accent : "#2B3E58"}`,
+          boxShadow: mode === "diary" ? t.glow : "none",
           borderRadius: "6px",
           padding: "20px",
           display: "flex",
           flexDirection: "column",
+          transition: "border-color 0.25s ease, box-shadow 0.25s ease",
         }}
       >
         <div
@@ -344,9 +410,9 @@ export default function CalendarMemo() {
         >
           <div>
             <div style={{ fontSize: "11px", color: "#7C93B3", letterSpacing: "0.1em" }}>
-              선택된 날짜
+              {t.label} · 선택된 날짜
             </div>
-            <div style={{ fontSize: "22px", fontWeight: 700, color: "#F0AD5D" }}>
+            <div style={{ fontSize: "22px", fontWeight: 700, color: t.accent }}>
               {selectedKey}
               <span style={{ fontSize: "13px", color: "#7C93B3", marginLeft: "10px" }}>
                 {WEEKDAYS[selectedDate.getDay()]}요일
@@ -355,9 +421,9 @@ export default function CalendarMemo() {
           </div>
 
           <div style={{ display: "flex", gap: "8px" }}>
-            <ActionButton onClick={handleNew} icon={<FilePlus2 size={15} />} label="새로만들기" />
-            <ActionButton onClick={handleLoadClick} icon={<FolderOpen size={15} />} label="불러오기" />
-            <ActionButton onClick={handleSave} icon={<Save size={15} />} label="저장하기" primary />
+            <ActionButton onClick={handleNew} icon={<FilePlus2 size={15} />} label="새로만들기" accent={t.accent} />
+            <ActionButton onClick={handleLoadClick} icon={<FolderOpen size={15} />} label="불러오기" accent={t.accent} />
+            <ActionButton onClick={handleSave} icon={<Save size={15} />} label="저장하기" accent={t.accent} primary />
           </div>
         </div>
 
@@ -365,13 +431,13 @@ export default function CalendarMemo() {
           value={draft}
           onChange={(e) => handleDraftChange(e.target.value)}
           onBlur={handleBlurSave}
-          placeholder="이 날짜의 메모를 입력하세요..."
+          placeholder={t.placeholder}
           style={{
             flex: 1,
             minHeight: "360px",
             resize: "vertical",
             background: "#0F1B2D",
-            border: "1px solid #2B3E58",
+            border: `1px solid ${mode === "diary" ? t.accent : "#2B3E58"}`,
             borderRadius: "5px",
             color: "#E8E6DF",
             fontFamily: "inherit",
@@ -379,6 +445,7 @@ export default function CalendarMemo() {
             lineHeight: 1.6,
             padding: "16px",
             outline: "none",
+            transition: "border-color 0.25s ease",
           }}
         />
 
@@ -386,19 +453,48 @@ export default function CalendarMemo() {
           style={{
             marginTop: "12px",
             fontSize: "12px",
-            color: status ? "#F0AD5D" : "#4C5F7A",
+            color: status ? t.accent : "#4C5F7A",
             height: "16px",
           }}
         >
-          {status || "메모는 날짜를 벗어나면 자동 임시 저장되며, '저장하기'를 눌러야 엑셀 파일로 내보내집니다."}
+          {status || `${t.unit}는 날짜를 벗어나면 자동 임시 저장되며, '저장하기'를 눌러야 엑셀 파일로 내보내집니다.`}
         </div>
+      </div>
       </div>
     </div>
     </>
   );
 }
 
-function ActionButton({ onClick, icon, label, primary }) {
+function TabButton({ theme, active, onClick }) {
+  const Icon = theme.icon;
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        padding: "11px 24px",
+        fontSize: "14px",
+        fontWeight: 700,
+        fontFamily: "inherit",
+        borderRadius: "8px",
+        cursor: "pointer",
+        border: `1px solid ${active ? theme.accent : "#2B3E58"}`,
+        background: active ? theme.soft : "transparent",
+        color: active ? theme.accent : "#7C93B3",
+        boxShadow: active ? theme.glow : "none",
+        transition: "all 0.2s ease",
+      }}
+    >
+      <Icon size={16} color={active ? theme.accent : "#7C93B3"} />
+      {theme.label}
+    </button>
+  );
+}
+
+function ActionButton({ onClick, icon, label, primary, accent = "#F0AD5D" }) {
   return (
     <button
       onClick={onClick}
@@ -411,8 +507,8 @@ function ActionButton({ onClick, icon, label, primary }) {
         fontFamily: "inherit",
         borderRadius: "5px",
         cursor: "pointer",
-        border: primary ? "1px solid #F0AD5D" : "1px solid #2B3E58",
-        background: primary ? "#F0AD5D" : "transparent",
+        border: primary ? `1px solid ${accent}` : "1px solid #2B3E58",
+        background: primary ? accent : "transparent",
         color: primary ? "#0F1B2D" : "#E8E6DF",
         fontWeight: primary ? 700 : 500,
       }}
