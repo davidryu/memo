@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { ChevronLeft, ChevronRight, FilePlus2, FolderOpen, Save, CircleDot } from "lucide-react";
+import Splash from "./Splash.jsx";
 
 const pad = (n) => String(n).padStart(2, "0");
 const toKey = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -23,6 +24,7 @@ export default function CalendarMemo() {
   const [notes, setNotes] = useState({}); // { "2026-07-20": "content" }
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState("");
+  const [showSplash, setShowSplash] = useState(true);
   const fileInputRef = useRef(null);
 
   // sync draft when selection changes
@@ -156,6 +158,8 @@ export default function CalendarMemo() {
   ).length;
 
   return (
+    <>
+      {showSplash && <Splash onDone={() => setShowSplash(false)} duration={5000} />}
     <div
       style={{
         minHeight: "100vh",
@@ -390,6 +394,7 @@ export default function CalendarMemo() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
